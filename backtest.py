@@ -4,27 +4,27 @@ from tqdm import tqdm
 import logger
 import statistics as st
 
-try:
-    with open('data.csv' , 'r') as file:
-        readcsv = csv.reader(file, delimiter=',')
-        candles= [row for row in readcsv][0]
-        candles= [float(x) for x in candles]
-except:
-    candles = []
 
-try:
-    with open('functions.csv', 'r') as file:
-        readstatistic = csv.reader(file, delimiter=',')
-        functions= [row for row in readstatistic]
-        Macd_short= [float(x) for x in functions[0]]
-        Macd_long= [float(x) for x in functions[1]]
-        sort_indicator= [float(x) for x in functions[2]]
-except:
-    Macd_short = []
-    Macd_long = []
-    sort_indicator = []
+with open('data.csv' , 'r') as file:
+    readcsv = csv.reader(file, delimiter=',')
+    data= [row for row in readcsv]
+    close= [float(x) for x in data[0]]
+    high= [float(x) for x in data[1]]
+    low= [float(x) for x in data[2]]
+_zip = zip(close,high,low)
+candles=[]
+for c,h,l in _zip:
+    candles.append(dict(close=c,high=h,low=l))
 
-pbar = tqdm(total=len(candles))
+with open('functions.csv', 'r') as file:
+    readstatistic = csv.reader(file, delimiter=',')
+    functions= [row for row in readstatistic]
+    Macd_short= [float(x) for x in functions[0]]
+    Macd_long= [float(x) for x in functions[1]]
+    sort_indicator= [float(x) for x in functions[2]]
+
+
+pbar = tqdm(total=len(close))
 statistics_logger = logger.setup_db('statistics')
 
 ##### Parameters #####
@@ -33,11 +33,10 @@ margin = init_margin
 margins = []
 
 leverage = 5
-profit = 0.005 # +0.5% from market price
-stop = 0.005
-
-taker_fee= -0.00075
-maker_fee = 0.00025
+profit = 0.004 # +0.5% from market price
+stop = 0.004
+taker_fee= 0.00075
+maker_fee = -0.00025
 
 entry_time = 0
 leave_time = 0
@@ -65,37 +64,39 @@ short_stop = 0
 short_entry = 0
 short_qtd = 0
 
-for num,close in enumerate(candles):
+for num,candle in enumerate(candles):
     
-    actualPrice = close
-    
+    actualPrice = candle['close']
+    high = candle['high']
+    low = candle['low']
+
     #Check Execution
     #in Long
     if in_long == True:
-        if actualPrice >= long_target:
-            margin = margin + (long_target/long_entry-1) * (long_qtd/long_target) + (long_qtd/long_target * maker_fee)
+        if high >= long_target:
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * maker_fee) - (long_qtd/long_entry * maker_fee)
 
             margins.append('L_target,{}'.format(margin))
             reached_target = True
             in_long = False
 
-        if actualPrice <= long_stop:
-            margin = margin - (1-long_stop/long_entry) * (long_qtd/long_stop) + (long_qtd/long_stop * taker_fee)
+        if low <= long_stop:
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * taker_fee) - (long_qtd/long_entry * maker_fee)
 
             margins.append('L_stop,{}'.format(margin))
             reached_stop = True
             in_long = False
 
     if in_short == True: 
-        if actualPrice <= short_target:
-            margin = margin + (1-short_target/short_entry) * (short_qtd/short_target) + (short_qtd/short_target * maker_fee)
+        if low <= short_target:
+            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * maker_fee) - (short_qtd/short_entry * maker_fee)
 
             margins.append('S_target,{}'.format(margin))
             reached_target = True
             in_short = False
 
-        if actualPrice >= short_stop:
-            margin = margin - (short_stop/short_entry-1) * (short_qtd/short_stop) + (short_qtd/short_stop * taker_fee)
+        if high >= short_stop:
+            margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * taker_fee) - (short_qtd/short_entry * maker_fee)
 
             margins.append('S_stop,{}'.format(margin))
             reached_stop = True
@@ -106,7 +107,7 @@ for num,close in enumerate(candles):
         state_short = 0
         state_long = 0
         reached_stop = False
-        stops_reached.append([num, close])
+        stops_reached.append([num, actualPrice])
         leave_time = num
         position_time.append(leave_time - entry_time)
 
@@ -115,7 +116,7 @@ for num,close in enumerate(candles):
         state_short = 0
         state_long = 0
         reached_target = False
-        targets_reached.append([num, close])
+        targets_reached.append([num, actualPrice])
         leave_time = num
         position_time.append(leave_time - entry_time)
 
@@ -137,9 +138,6 @@ for num,close in enumerate(candles):
                 in_long = True
                 state_long = 2
 
-                # margin = margin + actualPrice/long_qtd * taker_fee
-                margin = margin + actualPrice/long_qtd * maker_fee
-
                 entry_time = num
 
         # Short / Tendência de queda
@@ -157,9 +155,6 @@ for num,close in enumerate(candles):
                 short_stop = tools.toNearest(actualPrice + actualPrice * stop)
                 state_short = 2
                 in_short = True
-
-                # margin = margin + actualPrice/short_qtd * taker_fee
-                margin = margin + actualPrice/short_qtd * maker_fee
 
                 entry_time = num
         else:

@@ -23,14 +23,16 @@ with open('data.csv', 'w') as file:
         _data = exchange.Trade.Trade_getBucketed(symbol='XBTUSD', reverse=True, binSize='1m', startTime=startTime,endTime=endTime, count=1000).result()[0]
         for x in _data:
             close.append(x['close'])
-            # high.append(x['high'])
-            # low.append(x['low'])
+            high.append(x['high'])
+            low.append(x['low'])
 
 
         sleep(1.5)
         pbar.update(1)
     pbar.close()
     writer.writerow(close)
+    writer.writerow(high)
+    writer.writerow(low)
 print(len(close))
 
 def get_data():
