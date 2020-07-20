@@ -1,2 +1,2 @@
 # backtest
-backtest foda
+backtest ultra mega foda
