@@ -24,7 +24,7 @@ ohlcv.columns = ["Close", "High", "Low", "Open","datetime", 'time', "Volume"]
 ohlcv.datetime = ohlcv.datetime.apply(lambda x: dateparser.parse(x))
 
 pbar = tqdm(total=len(ohlcv))
-statistics_logger = logger.setup_db('statistics')
+statistics_logger = logger.setup_db('statistics/statistics')
 
 ##### Parameters #####
 init_margin = 1.0
