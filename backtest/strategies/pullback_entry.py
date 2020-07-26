@@ -1,16 +1,16 @@
-import tools
 from tqdm import tqdm
-import logger
 import statistics as st
 import pandas as  pd
 import numpy as np
 import ta
-import ccxt
 from datetime import datetime
 import talib as tb
-from time import sleep
-from client import FtxClient
 import dateparser
+
+import backtest.util.tools as tools
+import backtest.util.logger as logger
+import backtest.util.settings as settings
+from backtest.util.api_ftx import FtxClient
 
 ftx = FtxClient()
 market_name = 'BTC-PERP'
@@ -24,25 +24,19 @@ ohlcv.columns = ["Close", "High", "Low", "Open","datetime", 'time', "Volume"]
 ohlcv.datetime = ohlcv.datetime.apply(lambda x: dateparser.parse(x))
 
 pbar = tqdm(total=len(ohlcv))
+logger = logger.setup_logger()
 statistics_logger = logger.setup_db('statistics/statistics')
 
-##### Parameters #####
-init_margin = 1.0
-margin = init_margin
+##### Define Parameters #####
+margin = settings.init_margin
 margins = []
-
-leverage = 1
-profit = 0.01 # +0.5% from market price
-stop = 0.01
-taker_fee= 0.00075
-maker_fee = -0.00025
+signals=[]
+stops_reached = []
+targets_reached = []
 
 entry_time = 0
 leave_time = 0
 position_time = []
-
-stops_reached = []
-targets_reached = []
 
 long_target = 0
 long_stop = 0
@@ -55,27 +49,25 @@ short_entry = 0
 short_qtd = 0
 
 ##### State Machine #####
-
 reached_stop = False
 reached_target = False
 in_long = False
 in_short = False
 
-#//Definitions
+# //SMA'S
 ma50 = ta.trend.SMAIndicator(ohlcv.Close,50).sma_indicator() 
 ma20 = ta.trend.SMAIndicator(ohlcv.Close,20).sma_indicator() 
-
+# //BOLLINGER BANDS
 bb = ta.volatility.BollingerBands(ohlcv.Close,20)
 bb_top = bb.bollinger_hband()
 bb_bottom = bb.bollinger_lband()
-
-# //Fast
+# //MACD'S Fast EMA 
 ema1= ta.trend.EMAIndicator(ohlcv.Close,12).ema_indicator()
 ema2 = ta.trend.EMAIndicator(ema1,12).ema_indicator()
 differenceFast = ema1 - ema2
 zerolagEMA = ema1 + differenceFast
 demaFast = (2 * ema1) - ema2
-# //Slow
+# //MACD'S Slow EMA 
 emas1= ta.trend.EMAIndicator(ohlcv.Close,26).ema_indicator()
 emas2 = ta.trend.EMAIndicator(emas1,26).ema_indicator()
 differenceSlow = emas1 - emas2
@@ -88,9 +80,9 @@ emasig1 = ta.trend.EMAIndicator(ZeroLagMACD,9).ema_indicator()
 emasig2 = ta.trend.EMAIndicator(emasig1,9).ema_indicator()
 signal = (2 * emasig1) - emasig2
 macdz_hist = ZeroLagMACD -signal
-
+# //LINEAR REGRESSION
 linreg = tb.LINEARREG(ma50,10)
-signals=[]
+
 for num in range(100,len(ohlcv)):
     
     actualPrice = ohlcv.Close.iloc[num]
@@ -102,14 +94,14 @@ for num in range(100,len(ohlcv)):
     #in Long
     if in_long == True:
         if high >= long_target:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * maker_fee)
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * settings.maker_fee)
 
             margins.append('L_target,{}'.format(margin))
             reached_target = True
             in_long = False
 
         if low <= long_stop:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * taker_fee)
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * settings.taker_fee)
 
             margins.append('L_stop,{}'.format(margin))
             reached_stop = True
@@ -117,14 +109,14 @@ for num in range(100,len(ohlcv)):
 
     if in_short == True: 
         if low <= short_target:
-            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * maker_fee)
+            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * settings.maker_fee)
 
             margins.append('S_target,{}'.format(margin))
             reached_target = True
             in_short = False
 
         if high >= short_stop:
-            margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * taker_fee) 
+            margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * settings.taker_fee) 
 
             margins.append('S_stop,{}'.format(margin))
             reached_stop = True
@@ -175,47 +167,47 @@ for num in range(100,len(ohlcv)):
 
         if ma50_near_BB >= 1  and macdz_direction >= 1 and price_near_BB >= 1 and ma_steepness >= 1: #BUY SIGNAL
             
-            long_qtd = round(actualPrice * margin * leverage * 1) # In contracts, entry only with 80% of available margin
+            long_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
             long_entry = actualPrice
-            long_target = tools.toNearest(actualPrice + actualPrice * profit)
-            long_stop = tools.toNearest(actualPrice - actualPrice * stop)
+            long_target = tools.toNearest(actualPrice + actualPrice * settings.profit)
+            long_stop = tools.toNearest(actualPrice - actualPrice * settings.stop)
             in_long = True
             entry_time = num
-            margin = margin - (long_qtd/long_entry * maker_fee)
+            margin = margin - (long_qtd/long_entry * settings.maker_fee)
             signals.append('LONG = {}'.format(timestamp))
 
         if ma50_near_BB <= -1 and macdz_direction <= -1 and price_near_BB <= -1 and ma_steepness <= -1: #SELL SIGNAL
             
-            short_qtd = round(actualPrice * margin * leverage * 1) # In contracts, entry only with 80% of available margin
+            short_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
             short_entry = actualPrice
-            short_target = tools.toNearest(actualPrice - actualPrice * profit)
-            short_stop = tools.toNearest(actualPrice + actualPrice * stop)
+            short_target = tools.toNearest(actualPrice - actualPrice * settings.profit)
+            short_stop = tools.toNearest(actualPrice + actualPrice * settings.stop)
             in_short = True
             entry_time = num
-            margin = margin - (short_qtd/short_entry * maker_fee)
+            margin = margin - (short_qtd/short_entry * settings.maker_fee)
             signals.append('SHORT = {}'.format(timestamp))
 
     pbar.update(1)
 pbar.close()
 
-statistics_logger.info('Margin: {}, Profit/loss: {}, Stops: {}, Targets: {}'.format(round(margin,5),round((margin/init_margin) * 100,2),len(stops_reached),len(targets_reached)))
+statistics_logger.info('Margin: {}, Profit/loss: {}, Stops: {}, Targets: {}'.format(round(margin,5),round((margin/settings.init_margin) * 100,2),len(stops_reached),len(targets_reached)))
 statistics_logger.info('Stops: {}'.format(stops_reached))
 statistics_logger.info('Targets: {}'.format(targets_reached))
 statistics_logger.info('margins: {}'.format(margins))
-statistics_logger.info('Profit/loss: {}%'.format(round(((margin/init_margin-1) * 100),2)))
+statistics_logger.info('Profit/loss: {}%'.format(round(((margin/settings.init_margin-1) * 100),2)))
 statistics_logger.info('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
 statistics_logger.info('Signals: {}'.format(signals))
 statistics_logger.info('(////////////////////////////////////////////////////////')
 
-print('///////////////////////////////')
-print('-------------------------------')
-print('Start: {}'.format(ohlcv.datetime.iloc[100]))
-print('End: {}'.format(ohlcv.datetime.iloc[-1]))
-print('Final Margin: {}'.format(round(margin,5)))
-print('Profit/loss: {}%'.format(round(((margin/init_margin-1) * 100),2)))
-print('Stops: {}'.format(len(stops_reached)))
-print('Targets: {}'.format(len(targets_reached)))
-print('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
-print('Mean Position Time {} min'.format(round(st.mean(position_time),2)))
-print('-------------------------------')
-print('///////////////////////////////')
+logger.info('///////////////////////////////')
+logger.info('-------------------------------')
+logger.info('Start: {}'.format(ohlcv.datetime.iloc[100]))
+logger.info('End: {}'.format(ohlcv.datetime.iloc[-1]))
+logger.info('Final Margin: {}'.format(round(margin,5)))
+logger.info('Profit/loss: {}%'.format(round(((margin/settings.init_margin-1) * 100),2)))
+logger.info('Stops: {}'.format(len(stops_reached)))
+logger.info('Targets: {}'.format(len(targets_reached)))
+logger.info('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
+logger.info('Mean Position Time {} min'.format(round(st.mean(position_time),2)))
+logger.info('-------------------------------')
+logger.info('///////////////////////////////')

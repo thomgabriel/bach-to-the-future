@@ -23,3 +23,13 @@ def setup_db(name, extension='.csv',level=logging.INFO, getHandler = False):
         return logger, handler
     else:
         return logger
+
+def setup_logger():
+    '''Prints logger info to terminal'''
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    ch = logging.StreamHandler()
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
