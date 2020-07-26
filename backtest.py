@@ -11,10 +11,11 @@ with open('data.csv' , 'r') as file:
     close= [float(x) for x in data[0]]
     high= [float(x) for x in data[1]]
     low= [float(x) for x in data[2]]
-_zip = zip(close,high,low)
+    _timestamp= [x for x in data[3]] 
+_zip = zip(close,high,low,_timestamp)
 candles=[]
-for c,h,l in _zip:
-    candles.append(dict(close=c,high=h,low=l))
+for c,h,l,t in _zip:
+    candles.append(dict(close=c,high=h,low=l,timestamp=t))
 
 with open('functions.csv', 'r') as file:
     readstatistic = csv.reader(file, delimiter=',')
@@ -23,8 +24,7 @@ with open('functions.csv', 'r') as file:
     Macd_long= [float(x) for x in functions[1]]
     sort_indicator= [float(x) for x in functions[2]]
 
-
-pbar = tqdm(total=len(close))
+pbar = tqdm(total=len(candles))
 statistics_logger = logger.setup_db('statistics')
 
 ##### Parameters #####
@@ -32,9 +32,9 @@ init_margin = 1.0
 margin = init_margin
 margins = []
 
-leverage = 5
-profit = 0.004 # +0.5% from market price
-stop = 0.004
+leverage = 2
+profit = 0.008 # +0.5% from market price
+stop = 0.008
 taker_fee= 0.00075
 maker_fee = -0.00025
 
@@ -42,46 +42,48 @@ entry_time = 0
 leave_time = 0
 position_time = []
 
-##### State Machine #####
-state_short = 0
-state_long = 0
-
-reached_stop = False
 stops_reached = []
-
-reached_target = False
 targets_reached = []
 
-in_long = False
 long_target = 0
 long_stop = 0
 long_entry = 0
 long_qtd = 0
 
-in_short = False
 short_target = 0
 short_stop = 0
 short_entry = 0
 short_qtd = 0
+
+##### State Machine #####
+state_short = 0
+state_long = 0
+
+reached_stop = False
+reached_target = False
+
+in_long = False
+in_short = False
 
 for num,candle in enumerate(candles):
     
     actualPrice = candle['close']
     high = candle['high']
     low = candle['low']
+    timestamp = candle['timestamp']
 
     #Check Execution
     #in Long
     if in_long == True:
         if high >= long_target:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * maker_fee) - (long_qtd/long_entry * maker_fee)
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * maker_fee)
 
             margins.append('L_target,{}'.format(margin))
             reached_target = True
             in_long = False
 
         if low <= long_stop:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * taker_fee) - (long_qtd/long_entry * maker_fee)
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * taker_fee)
 
             margins.append('L_stop,{}'.format(margin))
             reached_stop = True
@@ -89,14 +91,14 @@ for num,candle in enumerate(candles):
 
     if in_short == True: 
         if low <= short_target:
-            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * maker_fee) - (short_qtd/short_entry * maker_fee)
+            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * maker_fee)
 
             margins.append('S_target,{}'.format(margin))
             reached_target = True
             in_short = False
 
         if high >= short_stop:
-            margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * taker_fee) - (short_qtd/short_entry * maker_fee)
+            margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * taker_fee) 
 
             margins.append('S_stop,{}'.format(margin))
             reached_stop = True
@@ -107,7 +109,7 @@ for num,candle in enumerate(candles):
         state_short = 0
         state_long = 0
         reached_stop = False
-        stops_reached.append([num, actualPrice])
+        stops_reached.append([timestamp, actualPrice])
         leave_time = num
         position_time.append(leave_time - entry_time)
 
@@ -116,7 +118,7 @@ for num,candle in enumerate(candles):
         state_short = 0
         state_long = 0
         reached_target = False
-        targets_reached.append([num, actualPrice])
+        targets_reached.append([timestamp, actualPrice])
         leave_time = num
         position_time.append(leave_time - entry_time)
 
@@ -131,14 +133,14 @@ for num,candle in enumerate(candles):
             # Condição suficiente 1 (princípio da divergência) (sinal opostos)
             if Macd_short[num] < 0 and state_long == 1:
                 
-                long_qtd = round(actualPrice * margin * leverage * 0.8) # In contracts, entry only with 80% of available margin
+                long_qtd = round(actualPrice * margin * leverage * 0.1) # In contracts, entry only with 80% of available margin
                 long_entry = actualPrice
                 long_target = tools.toNearest(actualPrice + actualPrice * profit)
                 long_stop = tools.toNearest(actualPrice - actualPrice * stop)
                 in_long = True
                 state_long = 2
-
                 entry_time = num
+                margin = margin - (long_qtd/long_entry * maker_fee)
 
         # Short / Tendência de queda
         elif Macd_long[num] < 0:
@@ -149,14 +151,14 @@ for num,candle in enumerate(candles):
             #  %Condição suficiente 1 (princípio da divergência) (sinais opostos)
             if Macd_short[num] > 0 and state_short == 1:
                 
-                short_qtd = round(actualPrice * margin * leverage * 0.8) # In contracts, entry only with 80% of available margin
+                short_qtd = round(actualPrice * margin * leverage * 0.1) # In contracts, entry only with 80% of available margin
                 short_entry = actualPrice
                 short_target = tools.toNearest(actualPrice - actualPrice * profit)
                 short_stop = tools.toNearest(actualPrice + actualPrice * stop)
                 state_short = 2
                 in_short = True
-
                 entry_time = num
+                margin = margin - (short_qtd/short_entry * maker_fee)
         else:
             state_short = 0
             state_long = 0
@@ -174,6 +176,8 @@ statistics_logger.info('(///////////////////////////////////////////////////////
 
 print('///////////////////////////////')
 print('-------------------------------')
+print('Start: {}'.format(_timestamp[0]))
+print('End: {}'.format(_timestamp[-1]))
 print('Final Margin: {}'.format(round(margin,5)))
 print('Profit/loss: {}%'.format(round(((margin/init_margin-1) * 100),2)))
 print('Stops: {}'.format(len(stops_reached)))
