@@ -1,0 +1,7 @@
+tqdm
+pandas
+numpy
+ta
+ta-lib
+dateparser
+ciso8601

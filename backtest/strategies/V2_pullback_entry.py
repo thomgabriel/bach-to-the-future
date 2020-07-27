@@ -2,9 +2,11 @@ from tqdm import tqdm
 import pandas as  pd
 import numpy as np
 import ta
+from time import sleep
 from datetime import datetime
 import talib as tb
 import dateparser
+import math
 
 import backtest.util.tools as tools
 import backtest.util.logger as logger
@@ -26,6 +28,8 @@ pbar = tqdm(total=len(ohlcv))
 _logger = logger.setup_logger()
 statistics_logger = logger.setup_db('../../../data/statistics/statistics')
 
+H1_ohlcv = ohlcv.iloc[::4]
+
 ##### Define Parameters #####
 margin = settings.init_margin
 leaves = []
@@ -39,11 +43,13 @@ entry_time = 0
 leave_time = 0
 position_time = []
 
+state_long = 0
 long_target = 0
 long_stop = 0
 long_entry = 0
 long_qtd = 0
 
+state_short = 0
 short_target = 0
 short_stop = 0
 short_entry = 0
@@ -55,6 +61,7 @@ reached_target = False
 in_long = False
 in_short = False
 
+RSI = ta.momentum.RSIIndicator(H1_ohlcv.Close, 14).rsi() 
 # //SMA'S
 ma50 = ta.trend.SMAIndicator(ohlcv.Close,50).sma_indicator() 
 ma20 = ta.trend.SMAIndicator(ohlcv.Close,20).sma_indicator() 
@@ -84,8 +91,6 @@ macdz_hist = ZeroLagMACD -signal
 # //LINEAR REGRESSION
 linreg = tb.LINEARREG(ma50,10)
 
-RSI = ta.momentum.RSIIndicator(ohlcv.Close, 14)
-
 for num in range(100,len(ohlcv)):
     
     actualPrice = ohlcv.Close.iloc[num]
@@ -96,32 +101,41 @@ for num in range(100,len(ohlcv)):
     #Check Execution
     #in Long
     if in_long == True:
-        if high >= long_target:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * settings.maker_fee)
-
+        print((RSI.iloc[math.floor(num/4)],timestamp))
+        if RSI.iloc[math.floor(num/4)] >= 75:
             leaves.append('L_target,{}'.format(timestamp))
             reached_target = True
             in_long = False
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/actualPrice)) - (long_qtd/actualPrice * settings.maker_fee)
 
-        if low <= long_stop:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * settings.taker_fee)
-
+        if RSI.iloc[math.floor(num/4)] <= 35:
             leaves.append('L_stop, {}'.format(timestamp))
             reached_stop = True
             in_long = False
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/actualPrice)) - (long_qtd/actualPrice * settings.taker_fee)
 
-    if in_short == True: 
-        if low <= short_target:
-            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * settings.maker_fee)
+        if low <= long_stop:
+            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * settings.taker_fee)
+            leaves.append('*L_stop, {}'.format(timestamp))
+            reached_stop = True
+            in_long = False
 
+    if in_short == True:         
+        if RSI.iloc[math.floor(num/4)] <= 20: 
             leaves.append('S_target, {}'.format(timestamp))
             reached_target = True
             in_short = False
+            margin = margin + ((short_qtd/actualPrice) - (short_qtd/short_entry)) - (short_qtd/actualPrice * settings.maker_fee)
+
+        if RSI.iloc[math.floor(num/4)] >= 60:
+            leaves.append('S_stop, {}'.format(timestamp))
+            reached_stop = True
+            in_short = False
+            margin = margin + ((short_qtd/actualPrice) - (short_qtd/short_entry)) - (short_qtd/actualPrice * settings.taker_fee) 
 
         if high >= short_stop:
             margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * settings.taker_fee) 
-
-            leaves.append('S_stop, {}'.format(timestamp))
+            leaves.append('*S_stop, {}'.format(timestamp))
             reached_stop = True
             in_short = False
 
@@ -169,29 +183,38 @@ for num in range(100,len(ohlcv)):
             macdz_direction = -1
 
         if ma50_near_BB >= 1  and macdz_direction >= 1 and price_near_BB >= 1 and ma_steepness >= 1: #BUY SIGNAL
-            
-            long_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
-            long_entry = actualPrice
-            long_target = tools.toNearest(actualPrice + actualPrice * settings.profit)
-            long_stop = tools.toNearest(actualPrice - actualPrice * settings.stop)
-            in_long = True
-            entry_time = num
-            margin = margin - (long_qtd/long_entry * settings.maker_fee)
-            signals.append('LONG = {}'.format(timestamp))
-            long_signals.append((timestamp, actualPrice))
-
+            state_long = 1
+        if state_long == 1:
+            if actualPrice <= bb_bottom[num]:
+                state_long = 2 
+                long_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
+                long_entry = actualPrice - 1
+        if state_long == 2:
+            if actualPrice <= long_entry:
+                long_stop = tools.toNearest(actualPrice - ((actualPrice - bb_bottom[num])*2))
+                in_long = True
+                entry_time = num
+                margin = margin - (long_qtd/long_entry * settings.maker_fee)
+                signals.append('LONG = {}'.format(timestamp))
+                long_signals.append((timestamp, actualPrice))
+                state_long = 0
 
         if ma50_near_BB <= -1 and macdz_direction <= -1 and price_near_BB <= -1 and ma_steepness <= -1: #SELL SIGNAL
-            
-            short_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
-            short_entry = actualPrice
-            short_target = tools.toNearest(actualPrice - actualPrice * settings.profit)
-            short_stop = tools.toNearest(actualPrice + actualPrice * settings.stop)
-            in_short = True
-            entry_time = num
-            margin = margin - (short_qtd/short_entry * settings.maker_fee)
-            signals.append('SHORT = {}'.format(timestamp))
-            short_signals.append((timestamp, actualPrice))
+            state_short = 1
+        if state_short == 1:
+            if actualPrice >= bb_top[num]:
+                state_short = 2
+                short_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
+                short_entry = actualPrice + 1
+        if state_short == 2:
+            if actualPrice >= short_entry:
+                short_stop = tools.toNearest(actualPrice + ((actualPrice - bb_bottom[num])*2))
+                in_short = True
+                entry_time = num
+                margin = margin - (short_qtd/short_entry * settings.maker_fee)
+                signals.append('SHORT = {}'.format(timestamp))
+                short_signals.append((timestamp, actualPrice))
+                state_short = 0
     pbar.update(1)
 pbar.close()
 
@@ -218,9 +241,6 @@ _logger.info('-------------------------------')
 _logger.info('///////////////////////////////')
 
 
-
-
-
 from bokeh.io import output_notebook, show
 from bokeh.plotting import figure
 p = figure(plot_width=1800, plot_height=800)
@@ -228,9 +248,13 @@ p.line(ohlcv.datetime, ohlcv.Close, line_width=2, color = 'black',legend_label="
 # p.line(ohlcv.datetime, bb_top, line_width=2, color = 'orange', legend_label="BBands HBand")
 # p.line(ohlcv.datetime, bb_bottom, line_width=2, color = 'orange',legend_label="BBands LBand")
 
-# p.circle([x[0] for x in stops_reached], [x[1] for x in stops_reached], legend_label="Stop Loss Reached", fill_color="yellow", size=8)
-# p.circle([x[0] for x in targets_reached], [x[1] for x in targets_reached], legend_label="Profit Target Reached", fill_color="brown", size=8)
+p.circle([x[0] for x in stops_reached], [x[1] for x in stops_reached], legend_label="Stop Loss Reached", fill_color="yellow", size=8)
+p.circle([x[0] for x in targets_reached], [x[1] for x in targets_reached], legend_label="Profit Target Reached", fill_color="brown", size=8)
 
 p.circle([x[0] for x in long_signals], [x[1] for x in long_signals], legend_label="Long Signal", fill_color="green", size=8)
 p.circle([x[0] for x in short_signals], [x[1] for x in short_signals], legend_label="Short Signal", fill_color="red", size=8)
 show(p)
+
+# e = figure(plot_width=1800, plot_height=200)
+# e.line(H1_ohlcv.datetime, RSI, line_width=2, color = 'black',legend_label="Close Price")
+# show(e)

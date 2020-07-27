@@ -150,3 +150,8 @@ static
 
 # VSCode
 .vscode
+
+# Virtualenv
+env_backtest
+
+__pycache__

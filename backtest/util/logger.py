@@ -5,7 +5,6 @@ import os
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 
-
 def setup_db(name, extension='.csv',level=logging.INFO, getHandler = False):
     """Setup writer that formats data to csv, supports multiple instances with no overlap."""
     formatter = logging.Formatter(fmt='%(asctime)s,%(message)s', datefmt='%d-%m-%y,%H:%M:%S')

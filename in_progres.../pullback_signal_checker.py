@@ -1,14 +1,14 @@
 import pandas as  pd
 import numpy as np
 import ta
-import ccxt
-import matplotlib.pyplot as plt
+# import ccxt
+# import matplotlib.pyplot as plt
 import datetime
-import scipy.stats as sp
+# import scipy.stats as sp
 import talib as tb
 # import sklearn
 from time import sleep
-from client import FtxClient
+from api_ftx import FtxClient
 import dateparser
 
 ftx = FtxClient()
@@ -16,7 +16,7 @@ ftx = FtxClient()
 market_name = 'BTC-PERP'
 resolution = 900 # TimeFrame in seconds.
 limit = 5000
-start_time = datetime.datetime.fromisoformat('2020-07-15 00:00:00').timestamp()
+start_time = datetime.datetime.fromisoformat('2020-07-20 00:00:00').timestamp()
 end_time = datetime.datetime.now().timestamp()
 
 # data = ftx.get_historical_data(market_name,resolution,limit,start_time,end_time)
