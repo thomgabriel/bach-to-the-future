@@ -1,236 +1,377 @@
 from tqdm import tqdm
 import pandas as  pd
-import numpy as np
-import ta
-from datetime import datetime
 import talib as tb
 import dateparser
+import datetime as dt
+import numpy as np
 
-import backtest.util.tools as tools
-import backtest.util.logger as logger
-import backtest.util.settings as settings
+import backtest.util.tools as TOOLS
+import backtest.util.logger as LOGGER
+import backtest.util.settings as SETTINGS
 from backtest.util.api_ftx import FtxClient
+from backtest.plotting.plot_pullback_entry import plot
 
-ftx = FtxClient()
-market_name = 'BTC-PERP'
-resolution = 900 # TimeFrame in seconds.
-limit = 5000
-start_time = datetime.fromisoformat('2020-05-01 00:00:00').timestamp()
-end_time = datetime.now().timestamp()
+class PullbackEntry:
 
-ohlcv = pd.DataFrame(data=ftx.get_historical_data(market_name,resolution,limit,start_time,end_time))
-ohlcv.columns = ["Close", "High", "Low", "Open","datetime", 'time', "Volume"]
-ohlcv.datetime = ohlcv.datetime.apply(lambda x: dateparser.parse(x[:18]))
-
-pbar = tqdm(total=len(ohlcv))
-_logger = logger.setup_logger()
-statistics_logger = logger.setup_db('../../../data/statistics/statistics')
-
-##### Define Parameters #####
-margin = settings.init_margin
-leaves = []
-signals=[]
-stops_reached = []
-targets_reached = []
-short_signals = []
-long_signals = []
-
-entry_time = 0
-leave_time = 0
-position_time = []
-
-long_target = 0
-long_stop = 0
-long_entry = 0
-long_qtd = 0
-
-short_target = 0
-short_stop = 0
-short_entry = 0
-short_qtd = 0
-
-##### State Machine #####
-reached_stop = False
-reached_target = False
-in_long = False
-in_short = False
-
-# //SMA'S
-ma50 = ta.trend.SMAIndicator(ohlcv.Close,50).sma_indicator() 
-ma20 = ta.trend.SMAIndicator(ohlcv.Close,20).sma_indicator() 
-# //BOLLINGER BANDS
-bb = ta.volatility.BollingerBands(ohlcv.Close,20)
-bb_top = bb.bollinger_hband()
-bb_bottom = bb.bollinger_lband()
-# //MACD'S Fast EMA 
-ema1= ta.trend.EMAIndicator(ohlcv.Close,12).ema_indicator()
-ema2 = ta.trend.EMAIndicator(ema1,12).ema_indicator()
-differenceFast = ema1 - ema2
-zerolagEMA = ema1 + differenceFast
-demaFast = (2 * ema1) - ema2
-# //MACD'S Slow EMA 
-emas1= ta.trend.EMAIndicator(ohlcv.Close,26).ema_indicator()
-emas2 = ta.trend.EMAIndicator(emas1,26).ema_indicator()
-differenceSlow = emas1 - emas2
-zerolagslowMA = emas1 + differenceSlow
-demaSlow = (2 * emas1) - emas2
-# //MACD LINE
-ZeroLagMACD = demaFast - demaSlow
-# //SIGNAL LINE
-emasig1 = ta.trend.EMAIndicator(ZeroLagMACD,9).ema_indicator()
-emasig2 = ta.trend.EMAIndicator(emasig1,9).ema_indicator()
-signal = (2 * emasig1) - emasig2
-macdz_hist = ZeroLagMACD -signal
-# //LINEAR REGRESSION
-linreg = tb.LINEARREG(ma50,10)
-
-RSI = ta.momentum.RSIIndicator(ohlcv.Close, 14)
-
-for num in range(100,len(ohlcv)):
-    
-    actualPrice = ohlcv.Close.iloc[num]
-    high = ohlcv.High.iloc[num]
-    low = ohlcv.Low.iloc[num]
-    timestamp = ohlcv.datetime.iloc[num]
-
-    #Check Execution
-    #in Long
-    if in_long == True:
-        if high >= long_target:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_target)) - (long_qtd/long_target * settings.maker_fee)
-
-            leaves.append('L_target,{}'.format(timestamp))
-            reached_target = True
-            in_long = False
-
-        if low <= long_stop:
-            margin = margin + ((long_qtd/long_entry) - (long_qtd/long_stop)) - (long_qtd/long_stop * settings.taker_fee)
-
-            leaves.append('L_stop, {}'.format(timestamp))
-            reached_stop = True
-            in_long = False
-
-    if in_short == True: 
-        if low <= short_target:
-            margin = margin + ((short_qtd/short_target) - (short_qtd/short_entry)) - (short_qtd/short_target * settings.maker_fee)
-
-            leaves.append('S_target, {}'.format(timestamp))
-            reached_target = True
-            in_short = False
-
-        if high >= short_stop:
-            margin = margin + ((short_qtd/short_stop) - (short_qtd/short_entry)) - (short_qtd/short_stop * settings.taker_fee) 
-
-            leaves.append('S_stop, {}'.format(timestamp))
-            reached_stop = True
-            in_short = False
-
-    # If reached Stop Loss   
-    if reached_stop:
-        reached_stop = False
-        stops_reached.append((timestamp, actualPrice))
-        leave_time = num
-        position_time.append(leave_time - entry_time)
-
-    # If reached Profit Target
-    if reached_target:
-        reached_target = False
-        targets_reached.append((timestamp, actualPrice))
-        leave_time = num
-        position_time.append(leave_time - entry_time)
-
-    if (not in_long) and (not in_short):
+    def __init__(self):
         
-        # //Buy Sell Signal
-        if ma50[num] > (ma20[num] + (bb_top[num] -ma20[num])/2):
-            ma50_near_BB= -1
-        elif ma50[num] < (ma20[num] - (ma20[num]-bb_bottom[num])/2):
-            ma50_near_BB= 1
-        else:
-            ma50_near_BB= 0
+        self.ohlcv = self.get_data()
+        self.indicators = self.calc_indicators()
 
-        if ohlcv.High[num] > (ma20[num]+(bb_top[num] -ma20[num])/2):
-            price_near_BB = -1
-        elif ohlcv.Low[num] < (ma20[num]-(ma20[num]-bb_bottom[num])/2):
-            price_near_BB = 1
-        else:
-            price_near_BB= 0
+        self.pbar = tqdm(total=len(self.ohlcv))
 
-        if (linreg[num-1]-linreg[num])/linreg[num] > 0.0002:
-            ma_steepness = -1
-        elif (linreg[num-1]-linreg[num])/linreg[num] < -0.0002:
-            ma_steepness = 1
-        else:
-            ma_steepness = 0
+        ##### Init Variables #####
+        self.margin = SETTINGS.INIT_MARGIN
 
-        if macdz_hist[num] > 0:
-            macdz_direction = 1
-        else:
-            macdz_direction = -1
+        self.stops_reached = []
+        self.targets_reached = []
+        self.short_signals = []
+        self.long_signals = []
+        self.partial_reached = []
+        self.all_exec = []
+        self.margin_returns = [(self.margin, self.ohlcv.datetime.iloc[100], 'Init Margin')]
 
-        if ma50_near_BB >= 1  and macdz_direction >= 1 and price_near_BB >= 1 and ma_steepness >= 1: #BUY SIGNAL
-            
-            long_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
-            long_entry = actualPrice
-            long_target = tools.toNearest(actualPrice + actualPrice * settings.profit)
-            long_stop = tools.toNearest(actualPrice - actualPrice * settings.stop)
-            in_long = True
-            entry_time = num
-            margin = margin - (long_qtd/long_entry * settings.maker_fee)
-            signals.append('LONG = {}'.format(timestamp))
-            long_signals.append((timestamp, actualPrice))
+        self.entry_time = 0
+        self.position_time = []
+
+        self.state_long = 0
+        self.state_short = 0
+
+        # self.target = 0
+        self.stop= 0
+        self.entry = 0
+        self.qtd = 0
+
+        ##### State Machine #####
+        self.reached_stop = False
+        self.reached_target = False
+        self.in_long = False
+        self.in_short = False
+        self.partial_tgt = False
 
 
-        if ma50_near_BB <= -1 and macdz_direction <= -1 and price_near_BB <= -1 and ma_steepness <= -1: #SELL SIGNAL
-            
-            short_qtd = round(actualPrice * margin * settings.leverage * 1) # In contracts, entry only with 80% of available margin
-            short_entry = actualPrice
-            short_target = tools.toNearest(actualPrice - actualPrice * settings.profit)
-            short_stop = tools.toNearest(actualPrice + actualPrice * settings.stop)
-            in_short = True
-            entry_time = num
-            margin = margin - (short_qtd/short_entry * settings.maker_fee)
-            signals.append('SHORT = {}'.format(timestamp))
-            short_signals.append((timestamp, actualPrice))
-    pbar.update(1)
-pbar.close()
+    def get_data(self):
+        ftx = FtxClient()
+        market_name = 'BTC-PERP'
+        resolution = 900 # TimeFrame in seconds.
+        limit = 10000
+        start_time = (dt.datetime.fromisoformat('2020-07-05 00:00:00') - dt.timedelta(seconds=resolution*100)).timestamp()
+        end_time = dt.datetime.now().timestamp()
 
-statistics_logger.info('Final Margin: {}, Profit/loss: {}, Stops: {}, Targets: {}'.format(round(margin,5),round((margin/settings.init_margin) * 100,2),len(stops_reached),len(targets_reached)))
-statistics_logger.info('Profit/loss: {}%'.format(round(((margin/settings.init_margin-1) * 100),2)))
-statistics_logger.info('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
-statistics_logger.info('Stops: {}'.format(stops_reached))
-statistics_logger.info('Targets: {}'.format(targets_reached))
-statistics_logger.info('Signals: {}'.format(signals))
-statistics_logger.info('Leaves: {}'.format(leaves))
-statistics_logger.info('\n \n \n')
+        ohlcv = pd.DataFrame(data=ftx.get_historical_data(market_name,resolution,limit,start_time,end_time))
+        ohlcv.columns = ["Close", "High", "Low", "Open","datetime", 'time', "Volume"]
+        ohlcv.datetime = ohlcv.datetime.apply(lambda x: dateparser.parse(x[:18]))
+        return ohlcv
 
-_logger.info('///////////////////////////////')
-_logger.info('-------------------------------')
-_logger.info('Start: {}'.format(ohlcv.datetime.iloc[100]))
-_logger.info('End: {}'.format(ohlcv.datetime.iloc[-1]))
-_logger.info('Final Margin: {}'.format(round(margin,5)))
-_logger.info('Profit/loss: {}%'.format(round(((margin/settings.init_margin-1) * 100),2)))
-_logger.info('Stops: {}'.format(len(stops_reached)))
-_logger.info('Targets: {}'.format(len(targets_reached)))
-_logger.info('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
-_logger.info('Mean Position Time {} min'.format(round(np.mean(position_time)*(resolution/60),2)))
-_logger.info('-------------------------------')
-_logger.info('///////////////////////////////')
+    def calc_indicators(self):
+        """
+        Return a dict of formatted indicators.
+        Returns:
+            indicators (list_of_dicts): with the following structure
+            {
+            'RSI': pandas.Series,
+            'ma50' : pandas.Series,
+            'ma20' : pandas.Series,
+            'ma7' : pandas.Series,
+            'bb_top' : pandas.Series,
+            'bb_bottom' : pandas.Series,
+            'macdz_hist' : pandas.Series,
+            'linreg' : pandas.Series,
+            'ATR' : pandas.Series,
+            'bb_diff' : pandas.Series,
+             }
+        """
+
+        # //Relative Strength Index calculation
+        RSI = tb.RSI(self.ohlcv.Close, SETTINGS.PARAM_RSI)
+
+        # //Simple Moving Averages calculation
+        ma50 = tb.SMA(self.ohlcv.Close,SETTINGS.PARAM_MA50)
+        ma20 = tb.SMA(self.ohlcv.Close,SETTINGS.PARAM_MA20)
+        ma7 = tb.SMA(self.ohlcv.Close,SETTINGS.PARAM_MA7)
+
+        # //Bollinger Bands calculation
+        bb_top, bb_mid, bb_bottom = tb.BBANDS(self.ohlcv.Close, timeperiod=SETTINGS.PARAM_BB)
+        bb_diff = (bb_top - bb_bottom)
+
+        # //MACD's Fast EMA line calculation
+        ema1= tb.EMA(self.ohlcv.Close,SETTINGS.PARAM_EMA1)
+        ema2= tb.EMA(ema1,SETTINGS.PARAM_EMA2)
+        differenceFast = ema1 - ema2
+        zerolagEMA = ema1 + differenceFast
+        demaFast = (2 * ema1) - ema2
+
+        # //MACD's Slow EMA line calculation
+        emas1= tb.EMA(self.ohlcv.Close,SETTINGS.PARAM_EMAS1)
+        emas2 = tb.EMA(emas1,SETTINGS.PARAM_EMAS2)
+        differenceSlow = emas1 - emas2
+        zerolagslowMA = emas1 + differenceSlow
+        demaSlow = (2 * emas1) - emas2
+
+        # //MACD LINE calculation
+        ZeroLagMACD = demaFast - demaSlow
+
+        # //MACD's EMA Signal line calculation
+        emasig1 = tb.EMA(ZeroLagMACD,SETTINGS.PARAM_EMASIG1)
+        emasig2 = tb.EMA(emasig1,SETTINGS.PARAM_EMASIG2)
+        signal = (2 * emasig1) - emasig2
+        macdz_hist = ZeroLagMACD -signal
+ 
+        # //LINEAR REGRESSION calculation
+        linreg = tb.LINEARREG(ma50,SETTINGS.PARAM_LINREG)
+
+        # //ATR calculation
+        ATR = tb.ATR(high=self.ohlcv.High, low=self.ohlcv.Low, close= self.ohlcv.Close, timeperiod=SETTINGS.PARAM_ATR)
+        
+        indicators = {
+            'RSI': RSI,
+            'ma50' : ma50,
+            'ma20' : ma20,
+            'ma7' : ma7,
+            'bb_top' : bb_top,
+            'bb_bottom' : bb_bottom,
+            'macdz_hist' : macdz_hist,
+            'linreg' : linreg,
+            'ATR' : ATR,
+            'bb_diff' : bb_diff,
+             }
+        return indicators
+
+    def main_loop(self):
+        indicators = self.calc_indicators()
+        for num in range(100,len(self.ohlcv)):
+
+            actualPrice = self.ohlcv.Close.iloc[num]
+            high = self.ohlcv.High.iloc[num]
+            low = self.ohlcv.Low.iloc[num]
+            timestamp = self.ohlcv.datetime.iloc[num]
+
+            RSI = indicators['RSI'].iloc[num]
+            ma50 = indicators['ma50'].iloc[num]
+            ma20 = indicators['ma20'].iloc[num]
+            ma7 = indicators['ma7'].iloc[num]
+            bb_top = indicators['bb_top'].iloc[num]
+            bb_bottom = indicators['bb_bottom'].iloc[num]
+            macdz_hist = indicators['macdz_hist'].iloc[num]
+            linreg = indicators['linreg'].iloc[num]
+            linreg_one_period = indicators['linreg'].iloc[num-1]
+            ATR = indicators['ATR'].iloc[num]
+            bb_confluency = all(np.diff(indicators['bb_diff'][num-6:num]) < 0)
+
+            #Check Execution
+            #in Long
+            if self.in_long == True:
+                if high >= bb_top and self.partial_tgt == False:
+                    self.partial_tgt = True
+                    self.margin = self.margin + ((self.qtd/self.entry - self.qtd/bb_top) - (self.qtd/bb_top * SETTINGS.MAKER_FEE)) *0.5
+                    self.partial_reached.append((timestamp,self.entry, bb_top))
+                    self.stop = self.entry
+                    self.all_exec.append((timestamp, TOOLS.toNearest(bb_top), 'Partial Target'))
+                    self.margin_returns.append((self.margin, timestamp, 'Partial Target'))
+
+                elif RSI >= 75:
+                    if self.partial_tgt == True:
+                        self.reached_target = True
+                        self.in_long = False
+                        self.margin = self.margin + ((self.qtd/self.entry - self.qtd/actualPrice) - (self.qtd/actualPrice * SETTINGS.TAKER_FEE))*0.5
+                       
+                    else:
+                        self.reached_target = True
+                        self.in_long = False
+                        self.margin = self.margin + ((self.qtd/self.entry - self.qtd/actualPrice) - (self.qtd/actualPrice * SETTINGS.TAKER_FEE))
+                        
+
+                elif low <= self.stop:
+                    if self.partial_tgt == True:
+                        self.margin = self.margin + ((self.qtd/self.entry - self.qtd/self.stop) - (self.qtd/self.stop * SETTINGS.TAKER_FEE))*0.5
+                        self.reached_stop = True
+                        self.in_long = False
+                
+                    else:
+                        self.reached_stop = True
+                        self.in_long = False
+                        self.margin = self.margin + ((self.qtd/self.entry) - (self.qtd/self.stop)) - (self.qtd/self.stop * SETTINGS.TAKER_FEE)
 
 
+            if self.in_short == True:    
+                if low <= bb_bottom and self.partial_tgt == False: 
+                    self.partial_tgt = True
+                    self.margin = self.margin + ((self.qtd/bb_bottom - self.qtd/self.entry) - (self.qtd/bb_bottom * SETTINGS.MAKER_FEE)) *0.5
+                    self.partial_reached.append((timestamp,self.entry, bb_bottom))
+                    self.stop = self.entry
+                    self.all_exec.append((timestamp, TOOLS.toNearest(bb_bottom), 'Partial Target'))
+                    self.margin_returns.append((self.margin, timestamp, 'Partial Target'))
+
+                elif RSI <= 25:
+                    if self.partial_tgt == True:
+                        self.reached_target = True
+                        self.in_short = False
+                        self.margin = self.margin + ((self.qtd/actualPrice - self.qtd/self.entry) - (self.qtd/actualPrice * SETTINGS.TAKER_FEE)) *0.5
+         
+                    else:
+                        self.reached_target = True
+                        self.in_short = False
+                        self.margin = self.margin + ((self.qtd/actualPrice - self.qtd/self.entry) - (self.qtd/actualPrice * SETTINGS.TAKER_FEE)) 
 
 
+                elif high >= self.stop:
+                    if self.partial_tgt == True:
+                        self.margin = self.margin + ((self.qtd/self.stop - self.qtd/self.entry) - (self.qtd/self.stop * SETTINGS.TAKER_FEE)) *0.5
+                        self.reached_stop = True
+                        self.in_short = False
+                    else:
+                        self.margin = self.margin + ((self.qtd/self.stop - self.qtd/self.entry) - (self.qtd/self.stop * SETTINGS.TAKER_FEE))
+                        self.reached_stop = True
+                        self.in_short = False
 
-from bokeh.io import output_notebook, show
-from bokeh.plotting import figure
-p = figure(plot_width=1800, plot_height=800)
-p.line(ohlcv.datetime, ohlcv.Close, line_width=2, color = 'black',legend_label="Close Price")
-# p.line(ohlcv.datetime, bb_top, line_width=2, color = 'orange', legend_label="BBands HBand")
-# p.line(ohlcv.datetime, bb_bottom, line_width=2, color = 'orange',legend_label="BBands LBand")
+            # If reached Stop Loss   
+            if self.reached_stop:
+                self.reached_stop = False
+                self.partial_tgt = False
 
-# p.circle([x[0] for x in stops_reached], [x[1] for x in stops_reached], legend_label="Stop Loss Reached", fill_color="yellow", size=8)
-# p.circle([x[0] for x in targets_reached], [x[1] for x in targets_reached], legend_label="Profit Target Reached", fill_color="brown", size=8)
+                self.position_time.append(num - self.entry_time)
+                self.stops_reached.append((timestamp,self.entry, self.stop))
+                self.all_exec.append((timestamp, self.stop, 'Stop Loss'))
+                self.margin_returns.append((self.margin, timestamp, 'Stop Loss'))   
 
-p.circle([x[0] for x in long_signals], [x[1] for x in long_signals], legend_label="Long Signal", fill_color="green", size=8)
-p.circle([x[0] for x in short_signals], [x[1] for x in short_signals], legend_label="Short Signal", fill_color="red", size=8)
-show(p)
+                self.state_short = 0
+                self.state_long = 0
+
+            # If reached Profit Target
+            if self.reached_target:
+                self.reached_target = False
+                self.partial_tgt = False
+
+                self.position_time.append(num - self.entry_time)
+                self.targets_reached.append((timestamp,self.entry, actualPrice))
+                self.all_exec.append((timestamp, actualPrice, 'Profit Target'))
+                self.margin_returns.append((self.margin, timestamp, 'Profit Target'))
+
+                self.state_short = 0
+                self.state_long = 0
+
+            if (not self.in_long) and (not self.in_short):
+                
+                # //Buy Sell Signal
+                if self.state_long == 0 and self.state_short == 0:
+
+                    if ma50 > (ma20 + (bb_top - ma20)/2):
+                        ma50_near_BB= -1
+                    elif ma50 < (ma20 - (ma20 - bb_bottom)/2):
+                        ma50_near_BB= 1
+                    else:
+                        ma50_near_BB= 0
+
+                    if high > (ma20+(bb_top - ma20)/2):
+                        price_near_BB = -1
+                    elif low < (ma20-(ma20 - bb_bottom)/2):
+                        price_near_BB = 1
+                    else:
+                        price_near_BB= 0
+
+                    if (linreg_one_period-linreg)/linreg > 0.0002:
+                        ma_steepness = -1
+                    elif (linreg_one_period-linreg)/linreg < -0.0002:
+                        ma_steepness = 1
+                    else:
+                        ma_steepness = 0
+
+                    if macdz_hist > 0:
+                        macdz_direction = 1
+                    else:
+                        macdz_direction = -1
+
+                    if ma50_near_BB >= 1  and macdz_direction >= 1 and price_near_BB >= 1 and ma_steepness >= 1: #BUY SIGNAL
+                        self.state_long = 1
+                    elif ma50_near_BB <= -1 and macdz_direction <= -1 and price_near_BB <= -1 and ma_steepness <= -1: #SELL SIGNAL
+                        self.state_short = 1
+
+                elif self.state_long:
+                    if self.state_long == 1 and low <= bb_bottom:
+                        if bb_confluency and RSI > 40: #and n_slope:
+                            self.state_long = 2 
+                            self.qtd = round(actualPrice * self.margin * SETTINGS.LEVAREGE)
+                            self.entry = actualPrice -1
+
+                    if self.state_long == 2 and low <= self.entry:
+                        self.stop = TOOLS.toNearest(actualPrice - (ATR*2))
+                        self.margin = self.margin - (self.qtd/self.entry * SETTINGS.MAKER_FEE)
+                        self.in_long = True
+                        self.entry_time = num
+                        self.long_signals.append((timestamp, self.entry)) 
+                        self.all_exec.append((timestamp, self.entry, 'Long Signal')) 
+                
+                elif self.state_short:
+                    if self.state_short == 1 and high >= bb_top:
+                        if bb_confluency and RSI < 65: # and (not n_slope):
+                            self.state_short = 2
+                            self.qtd = round(actualPrice * self.margin * SETTINGS.LEVAREGE)
+                            self.entry = actualPrice +1
+
+                    if self.state_short == 2 and high >= self.entry:
+                        self.stop = TOOLS.toNearest(actualPrice + (ATR*2))
+                        self.margin = self.margin - (self.qtd/self.entry * SETTINGS.MAKER_FEE)
+                        self.in_short = True
+                        self.entry_time = num
+                        self.short_signals.append((timestamp, self.entry))
+                        self.all_exec.append((timestamp, self.entry, 'Short Signal'))
+                else:
+                    self.state_short = 0
+                    self.state_long = 0
+                    
+            self.pbar.update(1)
+        self.pbar.close()
+        return
+
+    def calc_statistics(self):
+
+        margin_returns = pd.DataFrame(data=self.margin_returns, columns=['data','datetime', 'type'])
+        margin_returns['pct'] = margin_returns.data.pct_change()*100
+        margin_returns['pct'].iloc[0] = 0
+
+        statistics = {
+                'Start': str(self.ohlcv.datetime.iloc[100]),
+                'End' : str(self.ohlcv.datetime.iloc[-1]),
+                'Final Margin' : round(self.margin,5),
+                'Profit/loss' : '{}%' .format(round(((self.margin/SETTINGS.INIT_MARGIN-1) * 100),2)),
+                "Stops Reached" : '{} ({}%)'.format(len(self.stops_reached),round((len(self.stops_reached)/(len(self.stops_reached)+len(self.targets_reached))*100))),
+                'Target Reached' : '{} ({}%)'.format(len(self.targets_reached),round((len(self.targets_reached)/(len(self.stops_reached)+len(self.targets_reached))*100))),
+                'Partial Target Reached' : '{} ({}%)'.format(len(self.partial_reached),round((len(self.partial_reached)/(len(self.stops_reached)+len(self.targets_reached))*100))),
+                'Winrate' : '{}%'.format(round(len(self.targets_reached)/(len(self.targets_reached)+len(self.stops_reached))*100,2)),
+                'Median Position Time' : '{} min'.format(round(np.median(self.position_time),2)),
+                # 'Sharpe Ratio ' : round((margin_returns.pct.mean()/margin_returns.pct.std()),3)
+            }
+        return statistics
+    
+    def get_plot_data(self):
+        data = dict(ohlcv = self.ohlcv,
+            stops_reached = self.stops_reached,
+            targets_reached = self.targets_reached,
+            partial_reached = self.partial_reached,
+            long_signals = self.long_signals,
+            short_signals = self.short_signals,
+            all_exec = self.all_exec,
+            margin_returns = self.margin_returns,
+            )
+        return data
+
+    def run_backtest(self):
+        self.main_loop()
+        return
+
+if __name__ == "__main__":
+
+    logger = LOGGER.setup_logger()
+    statistics_logger = LOGGER.setup_db('../../data/statistics/statistics')
+
+    a = PullbackEntry()
+    a.run_backtest()
+    statistics = a.calc_statistics()
+
+    a.statistics_logger.info([(x, statistics[x]) for x in statistics])
+    print('\n')
+    for x in statistics:
+        a.logger.info('{} : {}'.format(x, statistics[x]))
+    print('\n')
+
+    # plot(a.get_plot_data(),statistics)

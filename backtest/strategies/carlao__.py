@@ -1,31 +1,18 @@
-import tools
-import csv
 from tqdm import tqdm
-import logger
 import statistics as st
+import json
+from backtest.util.paralelism_test import loop_sorting_index as stort_indicator
+import backtest.util.func as func
+import backtest.util.tools as tools
+import backtest.util.logger as logger
+import time
+import multiprocessing
 
-
-with open('data.csv' , 'r') as file:
-    readcsv = csv.reader(file, delimiter=',')
-    data= [row for row in readcsv]
-    close= [float(x) for x in data[0]]
-    high= [float(x) for x in data[1]]
-    low= [float(x) for x in data[2]]
-    _timestamp= [x for x in data[3]] 
-_zip = zip(close,high,low,_timestamp)
-candles=[]
-for c,h,l,t in _zip:
-    candles.append(dict(close=c,high=h,low=l,timestamp=t))
-
-with open('functions.csv', 'r') as file:
-    readstatistic = csv.reader(file, delimiter=',')
-    functions= [row for row in readstatistic]
-    Macd_short= [float(x) for x in functions[0]]
-    Macd_long= [float(x) for x in functions[1]]
-    sort_indicator= [float(x) for x in functions[2]]
-
-pbar = tqdm(total=len(candles))
-statistics_logger = logger.setup_db('statistics')
+start_time = time.time()
+with open('../../data/candles.json') as f:
+    candles = json.load(f)['candles']
+closes = [x['close'] for x in candles] 
+statistics_logger = logger.setup_db('../../../data/statistics/carlao_statistics')
 
 ##### Parameters #####
 init_margin = 1.0
@@ -33,8 +20,8 @@ margin = init_margin
 margins = []
 
 leverage = 2
-profit = 0.008 # +0.5% from market price
-stop = 0.008
+profit = 0.006 # +0.5% from market price
+stop = 0.006
 taker_fee= 0.00075
 maker_fee = -0.00025
 
@@ -65,8 +52,56 @@ reached_target = False
 in_long = False
 in_short = False
 
+sort_indicator= stort_indicator(closes)
+
+# def loop(n):
+#     print('Run num {}.format'.format(n))
+    ##########################################
+    ##### Parameters #####
+init_margin = 1.0
+margin = init_margin
+margins = []
+
+leverage = 1
+profit = 0.006 # +0.5% from market price
+stop = 0.006
+taker_fee= 0.00075
+maker_fee = -0.00025
+
+entry_time = 0
+leave_time = 0
+position_time = []
+
+stops_reached = []
+targets_reached = []
+
+long_target = 0
+long_stop = 0
+long_entry = 0
+long_qtd = 0
+
+short_target = 0
+short_stop = 0
+short_entry = 0
+short_qtd = 0
+
+##### State Machine #####
+state_short = 0
+state_long = 0
+
+reached_stop = False
+reached_target = False
+
+in_long = False
+in_short = False
+#######################################
+
+# pbar = tqdm(total=len(closes))
+Macd_short= func.MACD(closes,7,14,13)
+Macd_long= func.MACD(closes,84,182,63)
+
 for num,candle in enumerate(candles):
-    
+
     actualPrice = candle['close']
     high = candle['high']
     low = candle['low']
@@ -163,21 +198,30 @@ for num,candle in enumerate(candles):
             state_short = 0
             state_long = 0
 
-    pbar.update(1)
-pbar.close()
+#     pbar.update(1)
+# pbar.close()
+#     return
+    
+# with multiprocessing.Pool(8) as pool:
+#     pool.map(loop,range(0, 10))
 
-statistics_logger.info('Margin: {}, Profit/loss: {}, Stops: {}, Targets: {}'.format(round(margin,5),round((margin/init_margin) * 100,2),len(stops_reached),len(targets_reached)))
-statistics_logger.info('Stops: {}'.format(stops_reached))
-statistics_logger.info('Targets: {}'.format(targets_reached))
-statistics_logger.info('margins: {}'.format(margins))
-statistics_logger.info('Profit/loss: {}%'.format(round(((margin/init_margin-1) * 100),2)))
-statistics_logger.info('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
-statistics_logger.info('(////////////////////////////////////////////////////////')
+# lopp_time = time.time() - start_time
+# print(lopp_time)
+
+
+# statistics_logger.info('Margin: {}, Profit/loss: {}, Stops: {}, Targets: {}'.format(round(margin,5),round((margin/init_margin) * 100,2),len(stops_reached),len(targets_reached)))
+# statistics_logger.info('Stops: {}'.format(stops_reached))
+# statistics_logger.info('Targets: {}'.format(targets_reached))
+# statistics_logger.info('margins: {}'.format(margins))
+# statistics_logger.info('Profit/loss: {}%'.format(round(((margin/init_margin-1) * 100),2)))
+# statistics_logger.info('Winrate: {}%'.format(round(len(targets_reached)/(len(targets_reached)+len(stops_reached))*100,2)))
+# statistics_logger.info('(////////////////////////////////////////////////////////')
 
 print('///////////////////////////////')
 print('-------------------------------')
-print('Start: {}'.format(_timestamp[0]))
-print('End: {}'.format(_timestamp[-1]))
+# print('Loop Run Time: {} seconds'.format(round(lopp_time,2)))
+print('Start: {}'.format(candles[0]['timestamp']))
+print('End: {}'.format(candles[-1]['timestamp']))
 print('Final Margin: {}'.format(round(margin,5)))
 print('Profit/loss: {}%'.format(round(((margin/init_margin-1) * 100),2)))
 print('Stops: {}'.format(len(stops_reached)))

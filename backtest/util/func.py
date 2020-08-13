@@ -2,11 +2,6 @@ import numpy as np
 import csv
 from tqdm import tqdm
 
-with open('data.csv' , 'r') as file:
-    readcsv = csv.reader(file, delimiter=',')
-    candles= [row for row in readcsv]
-    closes= [float(x) for x in candles[0]]
-
 def sorting_index(candles,  prec=1e-3, N=130):
     data=[]
     pbar = tqdm(total=len(candles))
@@ -67,9 +62,4 @@ def MACD(candles,N1,N2,N3):
     linha_sinal = calc_med_ema(linha_MACD,N3) # lenta
     return linha_sinal
  
-with open('functions.csv', 'w') as file:
-    writer = csv.writer(file)
-    writer.writerow([x for x in MACD(closes,7,14,13)])
-    writer.writerow([x for x in MACD(closes,84,182,63)])
-    writer.writerow(sorting_index(closes))
 
