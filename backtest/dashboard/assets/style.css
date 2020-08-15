@@ -529,15 +529,15 @@ th{
 }
 
 .p-top-bar{
-  color: #b2b2b2;
-  font-size: 18px;
+  color: #dbdbdb;
+  font-size: 25px;
 }
 
 .header-bid-ask{
-  text-align: center;
-  padding-left: 10px;
-  color: #ededed;
+  color: #dbdbdb;
+  font-size: 20px;
 }
+
 .three-col{
   display: inline-block;
   width: 33%;
@@ -643,7 +643,6 @@ div.Select-value, .Select-control,div.period, .Select-input{
   text-decoration-color: #55575D;
   cursor: pointer;
 }
-
 .chart-graph{
   padding-bottom: 16px;
 }
@@ -860,4 +859,36 @@ summary::-webkit-details-marker {
 
 ._dash-undo-redo {
   display: none;
+}
+
+.pretty_container {
+  border-radius: 15px;
+  background-color:#21252C;
+  margin: 15px;
+  padding: 10px;
+  position: relative;
+  box-shadow: 2px 2px 2px lightgrey;
+  width: 100%;
+
+}
+
+.row2 {
+  display: flex;
+  padding-bottom: 15px;
+  width: 100%;
+}
+
+.info_text {
+  font-size: 30px;
+  color: #F9F9F9;
+  /* font-weight: 600; */
+  /* line-height: 38px; */ 
+
+}
+
+.info_text2 {
+  font-size: 20px;
+  color: #F9F9F9;
+  /* font-weight: 600; */
+  /* line-height: 38px;
 }

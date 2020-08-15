@@ -9,7 +9,6 @@ import backtest.util.tools as TOOLS
 import backtest.util.logger as LOGGER
 import backtest.util.settings as SETTINGS
 from backtest.util.api_ftx import FtxClient
-from backtest.plotting.plot_pullback_entry import plot
 
 class PullbackEntry:
 
@@ -374,4 +373,3 @@ if __name__ == "__main__":
         a.logger.info('{} : {}'.format(x, statistics[x]))
     print('\n')
 
-    # plot(a.get_plot_data(),statistics)

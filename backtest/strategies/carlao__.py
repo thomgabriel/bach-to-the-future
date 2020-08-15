@@ -1,7 +1,7 @@
 from tqdm import tqdm
 import statistics as st
 import json
-from backtest.util.paralelism_test import loop_sorting_index as stort_indicator
+# from backtest.util.paralelism_test import loop_sorting_index as stort_indicator
 import backtest.util.func as func
 import backtest.util.tools as tools
 import backtest.util.logger as logger
