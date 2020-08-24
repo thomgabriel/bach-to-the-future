@@ -10,13 +10,13 @@ import dateparser
 import re
 import talib as tb
 
-from backtest.strategies.pullback_entry import PullbackEntry
-from backtest.dashboard.client_dash import clients_dash
+from bach.strategies.pullback_entry import PullbackEntry
+from bach.dashboard.client_dash import clients_dash
 
 
-app = dash.Dash(title='Backtest',update_title= 'Loading...')
+app = dash.Dash(title='Bach to the Future',update_title= 'Loading...')
 
-from backtest.util.api_ftx import FtxClient
+from bach.util.api_ftx import FtxClient
 ftx = FtxClient()
 market_name = 'BTC-PERP'
 resolution = 900 # TimeFrame in seconds.
@@ -244,6 +244,9 @@ def get_fig(currency_pair, type_trace, studies, period, start_date, end_date):
     fig["layout"]["yaxis"]['color'] = '#F9F9F9'
     fig["layout"].update(paper_bgcolor="#21252C", plot_bgcolor="#21252C")
     fig["layout"]["yaxis"]['tickfont']['size'] = 15
+
+    fig["layout"]["xaxis"]['tickfont']['family'] = 'Ubuntu'
+    fig["layout"]["yaxis"]['tickfont']['family'] = 'Ubuntu' #'Noto Mono'
 
     return fig, fm, pl, sr, pr, pt, wr, mp, f"{currency_pair} ☰", init_date
 

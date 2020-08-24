@@ -516,8 +516,8 @@ th{
 .chart-style{
   position: relative;
   float: left;
-  padding-right: 12px;
-  margin-left: 0px;
+  /* padding-right: 12px;
+  margin-left: 0px; */
 }
 
 .height-50{
@@ -879,8 +879,9 @@ summary::-webkit-details-marker {
 }
 
 .info_text {
-  font-size: 25px;
+  font-size: 22px;
   color: #F9F9F9;
+  font-family : 'Ubuntu';
   /* font-weight: 600; */
   /* line-height: 38px; */ 
 
@@ -889,6 +890,7 @@ summary::-webkit-details-marker {
 .info_text2 {
   font-size: 18px;
   color: #F9F9F9;
+  font-family : 'Ubuntu';
   /* font-weight: 600; */
   /* /* line-height: 38px; */
 }
@@ -896,4 +898,40 @@ summary::-webkit-details-marker {
 .ui-datepicker 
 {
     background: #ffc000;
+}
+
+.pretty_container_buttons {
+  border-radius: 15px;
+  background-color:#21252C;
+  margin-right: 15px;
+  padding: 5px;
+  position: relative;
+  box-shadow: 0px 0px 1px 1px lightgrey;
+
+}
+
+.pretty_container_checklist {
+  border-radius: 5px;
+  background-color:#21252C;
+  margin: 15px;
+  padding: 10px;
+  position: relative;
+  box-shadow: 0px 0px 1px 1px lightgrey;
+
+}
+
+.footer1 {
+  font-size: 1.5rem;
+  color: #b5c6cc;
+  text-align: left;
+  font-family : Ubuntu;
+
+}
+
+.footer2 {
+  font-size: 1.5rem;
+  color: #b5c6cc;
+  text-align: right;
+  font-family : Ubuntu;
+
 }

@@ -3,8 +3,8 @@ from os.path import join, dirname
 
 here = dirname(__file__)
 
-setup(name='soon...',
-      version='0.0.1',
+setup(name='Bach to the Future',
+      version='0.0.2',
       description="Backtest infrastructure...",
       long_description=open(join(here, 'README.md')).read(),
       license='MIT',
@@ -15,9 +15,9 @@ setup(name='soon...',
         'tqdm==4.48.0',
         'numpy==1.19.1',
         'pandas==1.0.5',
-        'TA-Lib==0.4.18',
+        'ta-lib==0.4.18',
         'dateparser==0.7.6',
-        'dash==1.0.0',
+        'dash==1.14.0',
         'plotly==3.10.0',
         'gunicorn==19.9.0',
         'requests==2.22.0',

@@ -2,6 +2,7 @@ import dash_core_components as dcc
 import dash_html_components as html
 import plotly.graph_objs as go
 import datetime as dt
+import bach.util.settings as SETTINGS
 
 clients_dash = html.Div(
     className="u-full-width",
@@ -49,12 +50,16 @@ clients_dash = html.Div(
                             style= 
                                 {
                                 'color': '#ffc000',
-                                'background':'#ffc000'
+                                'background':'#ffc000',
+                                'font-family' : 'Ubuntu',
                             }
                         ),
                         html.Div(
                             id='output-container-date-picker-range',
-                            style={'color':'#ffc000'}
+                            style={
+                                'color':'#ffc000',
+                                'font-family' : 'Ubuntu',
+                            }
                         )
                     ],
                 ),
@@ -106,11 +111,11 @@ clients_dash = html.Div(
                     html.Div(
                         [
                             html.P(
-                                children="Stops Reached",
+                                children="Stop Losses",
                                 className="info_text2"
                                 ),
                             html.H6(
-                                children="Stops Reached",
+                                children="Stop Losses",
                                 style= {'text-align': 'center'},
                                 id="stops_reached",
                                 className="info_text"
@@ -123,11 +128,11 @@ clients_dash = html.Div(
                     html.Div(
                         [
                             html.P(
-                                children="Target Reached",
+                                children="Profit Targets",
                                 className="info_text2"
                             ),
                             html.H6(
-                                children="Target Reached",
+                                children="Profit Targets",
                                 style= {'text-align': 'center'},
                                 id="target_reached",
                                 className="info_text"
@@ -140,11 +145,11 @@ clients_dash = html.Div(
                     html.Div(
                         [
                             html.P(
-                                children="Partial Target Reached",
+                                children="Partial Target",
                                 className="info_text2"
                             ),
                             html.H6(
-                                children="Partial Target Reached",
+                                children="Partial Target",
                                 style= {'text-align': 'center'},
                                 id="partial_target",
                                 className="info_text"
@@ -203,8 +208,13 @@ clients_dash = html.Div(
                             # Menu for Currency Graph
                             html.Div(
                                 id="menu",
-                                className= "row",
-                                style= {'box-shadow': '0px 0.5px 2px 1px lightgrey'},
+                                className= "not_visible",
+                                style= {'box-shadow': '0px 0.5px 2px 1px lightgrey',
+                                        'margin-left' : '10px',
+                                        'margin-top' : '1px',
+                                        'width': 'auto',
+                                        'height': 'auto',
+                                    },
                                 children=[
                                     # stores current menu tab
                                     html.Div(
@@ -212,26 +222,54 @@ clients_dash = html.Div(
                                         children=["Studies"],
                                         style={"display": "none",}
                                         ),
-                                    html.Span(
-                                        "Style",
-                                        id="style_header",
-                                        className="span-menu",
-                                        n_clicks_timestamp=2,
-                                        style={
-                                            'width': '100%',
-                                            'box-shadow': '2px 2px 2px lightgrey',
-                                            }
+
+                                    html.Div(
+                                        style= {'box-shadow': '0px 0px 2px 1px lightgrey',
+                                                'background-color': '#21252C',
+                                                'padding':'12px'
+                                            },
+                                        children=[
+                                            html.Div(
+                                                style= {
+                                                    'display': 'flex'
+                                                    },
+                                                children=[
+                                                    html.Div(
+                                                        className="pretty_container_buttons",
+                                                        children=[
+                                                            html.Span(
+                                                                children="Style",
+                                                                id="style_header",
+                                                                className="inline-block chart-title",
+                                                                n_clicks_timestamp=2,
+                                                                style= {'font-size': '15px',
+                                                                        'color': '#F9F9F9',
+                                                                        'font-family' : 'Ubuntu',
+                                                                    },
+                                                                )
+                                                            ]
+                                                        ),
+                                                    html.Div(
+                                                        className="pretty_container_buttons",
+                                                        children=[
+                                                            html.Span(
+                                                                children="Studies",
+                                                                id="studies_header",
+                                                                className="inline-block chart-title",
+                                                                n_clicks_timestamp=1,
+                                                                style= {'font-size': '15px',
+                                                                        'color': '#F9F9F9',
+                                                                        'font-family' : 'Ubuntu',
+                                                                    },
+                                                                ),
+                                                            ]
+                                                        ),
+                                                    ]
+                                                ),
+                                            ],
                                         ),
-                                    html.Span(
-                                        "Studies",
-                                        id="studies_header",
-                                        className="span-menu",
-                                        n_clicks_timestamp=1,
-                                        style={
-                                            'width': '100%',
-                                            'box-shadow': '2px 2px 2px lightgrey',
-                                            }
-                                        ),
+
+
                                     # Studies Checklist
                                     html.Div(
                                         id="studies_tab",
@@ -240,64 +278,70 @@ clients_dash = html.Div(
                                                 id= "studies",
                                                 options=[
                                                     {
-                                                        "label": "Bollinger bands",
+                                                        "label": " Bollinger bands",
                                                         "value": "bollinger_trace",
                                                     },
                                                     {
-                                                        "label": "MA7", 
+                                                        "label": " MA7", 
                                                         "value": "moving_average_trace7"
                                                     },
                                                     {
-                                                        "label": "MA20", 
+                                                        "label": " MA20", 
                                                         "value": "moving_average_trace20"
                                                     },
                                                     {
-                                                        "label": "MA50", 
+                                                        "label": " MA50", 
                                                         "value": "moving_average_trace50"
                                                     },
                                                     {
-                                                        "label": "LinReg", 
+                                                        "label": " LinReg", 
                                                         "value": "linear_regression_trace"
                                                     },
                                                     {
-                                                        "label": "Pivot points", 
+                                                        "label": " Pivot points", 
                                                         "value": "pp_trace"
                                                     },
                                                     
                                             
                                                 ],
                                                 value=[],
-                                                className= 'pretty_container',
+                                                labelStyle={
+                                                    'font-size': '18px',
+                                                    'font-family' : 'Ubuntu',
+                                                },
                                             )
                                         ],
-                                        # className= 'pretty_container',
+                                        className= 'pretty_container_checklist',
                                         style={"display": "none"},
                                     ),
                                     # Styles checklist
                                     html.Div(
                                         id= "style_tab",
-                                        className= 'pretty_container',
+                                        className= 'pretty_container_checklist',
                                         children=[
                                             dcc.RadioItems(
                                                 id= "chart_type",
                                                 options=[
                                                     {
-                                                        "label": "Candlestick",
+                                                        "label": " Candlestick",
                                                         "value": "candlestick_trace",
                                                     },
-                                                    {   "label": "Line",
+                                                    {   "label": " Line",
                                                         "value": "line_trace"
                                                     },
-                                                    {   "label": "Mountain", 
+                                                    {   "label": " Mountain", 
                                                         "value": "area_trace"
                                                     },
-                                                    {   "label": "Colored Bar",
+                                                    {   "label": " Colored Bar",
                                                         "value": "colored_bar_trace",
                                                     },
                                                 ],
                                                 value="candlestick_trace",
+                                                labelStyle={
+                                                    'font-size': '18px',
+                                                    'font-family' : 'Ubuntu',
+                                                },
                                                 
-                                                className= 'pretty_container',
                                             )
                                         ],
                                     ),
@@ -313,21 +357,21 @@ clients_dash = html.Div(
                                         id= "menu_button",
                                         className="inline-block chart-title",
                                         children= "☰",
-                                        style= {'font-size': '20px',
-                                                'color': '#F9F9F9'},
+                                        style= {
+                                            'font-size': '20px',
+                                            # 'color': '#F9F9F9',
+                                            'color': '#ffc000',
+                                            'font-family' : 'Ubuntu',
+                                            },
                                         n_clicks=0,
                                         
                                     ),
                                     # Dropdown and close button float right
                                     html.Div(
                                         className="graph-top-right inline-block",
-                                        # style= {'font-size': '17px',
-                                        #         'color': '#F9F9F9'},
                                         children=[
                                             html.Div(
                                                 className="inline-block",
-                                                style= {'font-size': '17px',
-                                                        'color': '#F9F9F9'},
                                                 children=[
                                                     dcc.Dropdown(
                                                         className="dropdown-period",
@@ -340,6 +384,11 @@ clients_dash = html.Div(
                                                         ],
                                                         value="15Min",
                                                         clearable=False,
+                                                        style={
+                                                            'font-size': '18px',
+                                                            'font-family' : 'Ubuntu',
+                                                            'color': '#F9F9F9',
+                                                        }
                                                     )
                                                 ],
                                             ),
@@ -355,6 +404,22 @@ clients_dash = html.Div(
                                     style= {'box-shadow': '0px -0.5px 2px 0px lightgrey'},
                                     config={"scrollZoom": True},
                                     ),
+                                ),
+
+                            # Footer
+                            html.Div(
+                                className="u-full-width",
+                                # style = {'display' : 'flex'},
+                                children=[
+                                    html.P(
+                                        children = 'Bach to the Future Dashboard  v{0} - © Quan Digital 2020'.format(SETTINGS.VERSION),
+                                        className = 'footer1',
+                                        ),
+                                    html.P(
+                                        children ='Designed by thomgabriel',
+                                        className = 'footer1',
+                                        ),
+                                    ], 
                                 ),
                             ],
                         ), 

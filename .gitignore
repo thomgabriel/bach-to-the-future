@@ -152,7 +152,7 @@ static
 .vscode
 
 # Virtualenv
-env_backtest
+env-bach
 
 __pycache__
 

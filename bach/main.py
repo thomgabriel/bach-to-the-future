@@ -1,9 +1,9 @@
-from backtest.strategies.pullback_entry import PullbackEntry
-from backtest.dashboard import app
+from bach.strategies.pullback_entry import PullbackEntry
+from bach.dashboard import app
 
-from backtest.util import settings as SETTINGS
-from backtest.util import tools as TOOLS
-import backtest.util.logger as LOGGER
+from bach.util import settings as SETTINGS
+from bach.util import tools as TOOLS
+import bach.util.logger as LOGGER
 
 from threading import Thread
 

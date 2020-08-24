@@ -5,10 +5,10 @@ import dateparser
 import datetime as dt
 import numpy as np
 
-import backtest.util.tools as TOOLS
-import backtest.util.logger as LOGGER
-import backtest.util.settings as SETTINGS
-from backtest.util.api_ftx import FtxClient
+import bach.util.tools as TOOLS
+import bach.util.logger as LOGGER
+import bach.util.settings as SETTINGS
+from bach.util.api_ftx import FtxClient
 
 class PullbackEntry:
 
