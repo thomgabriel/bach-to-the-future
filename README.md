@@ -4,6 +4,6 @@ The ultimate backtest infrastructure with dashboard.
 
 ## Setup & usage
 
-- pip3 install git+https://github.com/quan-digital/bitmex-kollector#egg=bitmex_kollector
+- pip3 install git+https://github.com/thomgabriel/bach-to-the-future#egg=bach-to-the-future
 
 - copy, config and run main.py :)
